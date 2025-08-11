@@ -12,14 +12,13 @@ st.set_page_config(
 )
 
 # --- CSS Customizado para Melhorar a Aparência Mobile ---
-# (Pequenos ajustes para melhor espaçamento e legibilidade)
 st.markdown("""
 <style>
     .block-container {
         padding-top: 1.5rem;
         padding-bottom: 2rem;
     }
-    .st-emotion-cache-16txtl3 { /* Classe específica para o container do form */
+    .st-emotion-cache-16txtl3 {
         padding: 20px;
         background-color: #1a1a1a;
         border-radius: 10px;
@@ -31,7 +30,6 @@ st.markdown("""
         border-radius: 10px;
         color: white;
     }
-    /* Melhora a visibilidade dos títulos dentro das abas */
     h2 {
         font-size: 1.5rem;
         color: #FAFAFA;
@@ -47,10 +45,12 @@ st.markdown("""
 def carregar_dados():
     try:
         df = pd.read_csv('transacoes.csv')
-        df['Data'] = pd.to_datetime(df['Data']).dt.date
+        # MUDANÇA 1: Converte a coluna para datetime completo (data e hora)
+        df['Data/Hora'] = pd.to_datetime(df['Data/Hora'])
         return df
     except FileNotFoundError:
-        return pd.DataFrame(columns=['Data', 'Descrição', 'Valor', 'Tipo', 'Categoria'])
+        # MUDANÇA 1: A coluna inicial agora é 'Data/Hora'
+        return pd.DataFrame(columns=['Data/Hora', 'Descrição', 'Valor', 'Tipo', 'Categoria'])
 
 def salvar_dados(df):
     df.to_csv('transacoes.csv', index=False)
@@ -68,7 +68,7 @@ def categorizar_com_ia(descricao):
         )
         return chat_completion.choices[0].message.content.strip()
     except Exception as e:
-        print(f"Erro na API Groq: {e}") # Loga o erro no terminal para debug
+        print(f"Erro na API Groq: {e}")
         return None
 
 # --- 3. Inicialização e Carregamento de Dados ---
@@ -81,7 +81,6 @@ if 'categoria_sugerida' not in st.session_state:
 
 st.title("🤖 Finanças com IA")
 
-# --- CRIAÇÃO DAS ABAS (A "SEGUNDA BARRA") ---
 tab_lancamento, tab_analise = st.tabs(["✍️ Lançar", "📊 Histórico & Análise"])
 
 # --- ABA 1: FORMULÁRIO DE LANÇAMENTO ---
@@ -94,32 +93,31 @@ with tab_lancamento:
             tipo = st.selectbox("Tipo", ["Despesa", "Receita"], label_visibility="collapsed")
         with col2:
             valor = st.number_input("Valor", min_value=0.01, format="%.2f")
-            data = st.date_input("Data", datetime.now(), label_visibility="collapsed")
-
+            
         if st.form_submit_button("Sugerir Categoria com IA ✨"):
             with st.spinner("A IA está pensando... 🤔"):
                 sugestao = categorizar_com_ia(descricao)
-                if sugestao:
-                    st.session_state.categoria_sugerida = sugestao
+                if sugestao: st.session_state.categoria_sugerida = sugestao
 
         categorias = ["Alimentação", "Moradia", "Transporte", "Lazer", "Saúde", "Educação", "Salário", "Investimentos", "Outros"]
         try:
             indice_sugerido = categorias.index(st.session_state.categoria_sugerida)
         except ValueError:
             indice_sugerido = 0
-
         categoria_selecionada = st.selectbox("Categoria", categorias, index=indice_sugerido)
 
         if st.form_submit_button("✅ Adicionar Transação"):
             if not descricao or valor <= 0:
                 st.warning("Por favor, preencha a descrição e o valor.")
             else:
-                nova_transacao = pd.DataFrame([[data, descricao, valor, tipo, categoria_selecionada]], columns=['Data', 'Descrição', 'Valor', 'Tipo', 'Categoria'])
+                # MUDANÇA 1: Captura a data e hora atuais
+                data_hora_atual = datetime.now()
+                nova_transacao = pd.DataFrame([[data_hora_atual, descricao, valor, tipo, categoria_selecionada]], columns=['Data/Hora', 'Descrição', 'Valor', 'Tipo', 'Categoria'])
                 st.session_state.transacoes = pd.concat([st.session_state.transacoes, nova_transacao], ignore_index=True)
                 salvar_dados(st.session_state.transacoes)
                 st.success("Transação adicionada!")
                 st.session_state.categoria_sugerida = ""
-                st.rerun() # Recarrega a página para atualizar a outra aba
+                st.rerun()
 
 # --- ABA 2: HISTÓRICO E ANÁLISES ---
 with tab_analise:
@@ -132,10 +130,8 @@ with tab_analise:
     col1.metric("Receitas", f"R${total_receitas:,.2f}")
     col2.metric("Despesas", f"R${total_despesas:,.2f}")
     col3.metric("Saldo", f"R${saldo:,.2f}")
-    
-    st.divider() # Adiciona uma linha divisória
+    st.divider()
 
-    # Gráfico de Despesas
     despesas_df = st.session_state.transacoes[st.session_state.transacoes['Tipo'] == 'Despesa']
     if not despesas_df.empty:
         st.header("Despesas por Categoria")
@@ -143,6 +139,45 @@ with tab_analise:
         st.bar_chart(despesas_por_categoria, use_container_width=True)
         st.divider()
 
-    # Histórico de Transações
     st.header("Todas as Transações")
-    st.dataframe(st.session_state.transacoes.sort_values(by="Data", ascending=False), use_container_width=True)
+    
+    # MUDANÇA 2: Usando st.data_editor para uma visualização de planilha melhorada
+    df_para_mostrar = st.session_state.transacoes.sort_values(by="Data/Hora", ascending=False)
+    
+    st.data_editor(
+        df_para_mostrar,
+        use_container_width=True,
+        hide_index=True, # Esconde o índice padrão do Pandas
+        column_config={
+            "Data/Hora": st.column_config.DatetimeColumn(
+                "Data e Hora",
+                format="DD/MM/YYYY - HH:mm", # Formato amigável
+            ),
+            "Valor": st.column_config.NumberColumn(
+                "Valor (R$)",
+                format="R$ %.2f", # Formato de moeda
+            )
+        },
+        disabled=['Data/Hora', 'Descrição', 'Valor', 'Tipo', 'Categoria'] # Desabilita a edição direta
+    )
+    
+    st.divider()
+
+    # MUDANÇA 3: Funcionalidade para apagar lançamentos
+    st.header("Apagar Lançamento")
+    if not st.session_state.transacoes.empty:
+        # Usamos o índice do DataFrame como ID para exclusão
+        indices_disponiveis = st.session_state.transacoes.index.tolist()
+        indice_para_apagar = st.selectbox("Selecione o ID do lançamento a ser apagado:", indices_disponiveis)
+
+        if st.button("🗑️ Apagar Lançamento Selecionado"):
+            if indice_para_apagar in indices_disponiveis:
+                st.session_state.transacoes.drop(indice_para_apagar, inplace=True)
+                st.session_state.transacoes.reset_index(drop=True, inplace=True) # Importante para reajustar os índices
+                salvar_dados(st.session_state.transacoes)
+                st.success(f"Lançamento com ID {indice_para_apagar} apagado!")
+                st.rerun()
+            else:
+                st.error("ID inválido ou já apagado.")
+    else:
+        st.info("Nenhum lançamento para apagar.")

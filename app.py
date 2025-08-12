@@ -17,69 +17,28 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. FUNÇÕES DE DADOS (COM LÓGICA DE MIGRAÇÃO ROBUSTA) ---
-
-def carregar_transacoes():
-    colunas_esperadas = ['Data/Hora', 'Descrição', 'Valor', 'Tipo', 'Categoria', 'Subcategoria', 'Descrição da IA']
-    try:
-        df = pd.read_csv('transacoes.csv')
-        # Lógica de migração: Renomeia 'Data' para 'Data/Hora' se necessário
-        if 'Data' in df.columns and 'Data/Hora' not in df.columns:
-            df.rename(columns={'Data': 'Data/Hora'}, inplace=True)
-        # Garante que todas as outras colunas existam
-        for col in colunas_esperadas:
-            if col not in df.columns:
-                df[col] = 'N/A' if col in ['Subcategoria', 'Descrição da IA'] else pd.NaT if col == 'Data/Hora' else 0
-        df['Data/Hora'] = pd.to_datetime(df['Data/Hora'], errors='coerce')
-        df['Valor'] = pd.to_numeric(df['Valor'], errors='coerce').fillna(0)
-        salvar_dados_csv(df, 'transacoes.csv')
-        return df
-    except (FileNotFoundError, pd.errors.EmptyDataError):
-        return pd.DataFrame(columns=colunas_esperadas)
-
-def carregar_freelas():
-    colunas_esperadas = ['Descrição', 'Status', 'Modo de Cobrança', 'Valor da Hora', 'Valor Fixo', 'Início', 'Término', 'Valor a Receber']
-    try:
-        df = pd.read_csv('freelancer_jobs.csv')
-        for col in colunas_esperadas:
-            if col not in df.columns: df[col] = pd.NaT if col in ['Início', 'Término'] else 0
-        df['Início'] = pd.to_datetime(df['Início'], errors='coerce')
-        df['Término'] = pd.to_datetime(df['Término'], errors='coerce')
-        return df
-    except (FileNotFoundError, pd.errors.EmptyDataError):
-        return pd.DataFrame(columns=colunas_esperadas)
-
-def carregar_reserva_movimentacoes():
-    colunas_esperadas = ['Data', 'Tipo', 'Valor']
-    try:
-        df = pd.read_csv('reserva_movimentacoes.csv')
-        df['Data'] = pd.to_datetime(df['Data'], errors='coerce')
-        df['Valor'] = pd.to_numeric(df['Valor'], errors='coerce').fillna(0)
-        return df
-    except (FileNotFoundError, pd.errors.EmptyDataError):
-        return pd.DataFrame(columns=colunas_esperadas)
-
-def carregar_reserva_meta():
-    try: return json.load(open('reserva_meta.json', 'r')).get('meta', 1000.0)
-    except (FileNotFoundError, json.JSONDecodeError): return 1000.0
-
+# --- 2. FUNÇÕES DE DADOS E IA ---
+def carregar_dados_csv(caminho_arquivo, colunas):
+    try: return pd.read_csv(caminho_arquivo)
+    except (FileNotFoundError, pd.errors.EmptyDataError): return pd.DataFrame(columns=colunas)
 def salvar_dados_csv(df, caminho_arquivo): df.to_csv(caminho_arquivo, index=False)
+def carregar_dados_json(caminho_arquivo, chave_padrão, valor_padrão):
+    try: return json.load(open(caminho_arquivo, 'r')).get(chave_padrão, valor_padrão)
+    except (FileNotFoundError, json.JSONDecodeError): return valor_padrão
 def salvar_dados_json(dados, caminho_arquivo):
     with open(caminho_arquivo, 'w') as f: json.dump(dados, f)
 
-# --- Funções da IA (sem alterações) ---
 def categorizar_com_ia(descricao):
-    #... (código mantido)
     if not descricao: return "Outros", "N/A"
     try:
         client = groq.Client(api_key=st.secrets["GROQ_API_KEY"])
         chat_completion = client.chat.completions.create(messages=[{"role": "system", "content": 'Você é um assistente financeiro especialista. Responda APENAS com um objeto JSON no formato: {"categoria": "...", "subcategoria": "..."}. Categorias permitidas: Alimentação, Moradia, Transporte, Lazer, Saúde, Educação, Compras, Salário, Investimentos, Outros. Exemplos: "Óculos de sol" -> {"categoria": "Compras", "subcategoria": "Acessórios"}; "Consulta médica" -> {"categoria": "Saúde", "subcategoria": "Médico"}.'}, {"role": "user", "content": f"Classifique a despesa: '{descricao}'"}], model="llama3-70b-8192", temperature=0.0, response_format={"type": "json_object"})
         response_json = json.loads(chat_completion.choices[0].message.content)
         return response_json.get("categoria", "Outros"), response_json.get("subcategoria", "N/A")
-    except Exception as e: st.error(f"Erro ao categorizar: {e}"); return "Outros", "N/A"
+    except Exception as e:
+        st.error(f"Erro ao categorizar: {e}"); return "Outros", "N/A"
 
 def chamar_chatbot_ia(historico_conversa, resumo_financeiro):
-    #... (código mantido)
     prompt_sistema = (f"Você é FinBot, um assistente financeiro educativo. Use o seguinte resumo financeiro do usuário para personalizar suas respostas: {resumo_financeiro}. Dê noções gerais sobre investimentos. Sempre inclua um aviso para procurar um profissional e NUNCA se apresente como um conselheiro licenciado.")
     try:
         client = groq.Client(api_key=st.secrets["GROQ_API_KEY"])
@@ -87,25 +46,26 @@ def chamar_chatbot_ia(historico_conversa, resumo_financeiro):
         mensagens_para_api.extend(historico_conversa)
         chat_completion = client.chat.completions.create(messages=mensagens_para_api, model="llama3-70b-8192", temperature=0.7)
         return chat_completion.choices[0].message.content
-    except Exception as e: st.error(f"Erro no chatbot: {e}"); return "Desculpe, estou com um problema para me conectar. Tente novamente."
+    except Exception as e:
+        st.error(f"Erro no chatbot: {e}"); return "Desculpe, estou com um problema para me conectar. Tente novamente."
 
-
-# --- 3. INICIALIZAÇÃO DE ESTADO ---
+# --- 3. INICIALIZAÇÃO E LÓGICA DE PERÍODO ---
 if 'periodo_selecionado' not in st.session_state: st.session_state.periodo_selecionado = datetime.now()
-if 'transacoes' not in st.session_state: st.session_state.transacoes = carregar_transacoes()
-if 'freelas' not in st.session_state: st.session_state.freelas = carregar_freelas()
-if 'reserva_movimentacoes' not in st.session_state: st.session_state.reserva_movimentacoes = carregar_reserva_movimentacoes()
-if 'reserva_meta' not in st.session_state: st.session_state.reserva_meta = carregar_reserva_meta()
+if 'transacoes' not in st.session_state: st.session_state.transacoes = carregar_dados_csv('transacoes.csv', ['Data/Hora', 'Descrição', 'Valor', 'Tipo', 'Categoria', 'Subcategoria', 'Descrição da IA'])
+if 'freelas' not in st.session_state: st.session_state.freelas = carregar_dados_csv('freelancer_jobs.csv', ['Descrição', 'Status', 'Modo de Cobrança', 'Valor da Hora', 'Valor Fixo', 'Início', 'Término', 'Valor a Receber'])
+if 'reserva_movimentacoes' not in st.session_state: st.session_state.reserva_movimentacoes = carregar_dados_csv('reserva_movimentacoes.csv', ['Data', 'Tipo', 'Valor'])
+if 'reserva_meta' not in st.session_state: st.session_state.reserva_meta = carregar_dados_json('reserva_meta.json', 'meta', 1000.0)
 if 'sugestoes' not in st.session_state: st.session_state.sugestoes = {"categoria": "", "subcategoria": ""}
 if "messages" not in st.session_state: st.session_state.messages = [{"role": "assistant", "content": "Olá! Sou o FinBot. Como posso ajudar?"}]
 
-def exibir_navegador_mes():
+# MUDANÇA: Função agora aceita um parâmetro 'contexto' para criar chaves únicas
+def exibir_navegador_mes(contexto):
     col1, col2, col3 = st.columns([1, 4, 1])
-    if col1.button("⬅️", use_container_width=True, help="Mês Anterior"):
+    if col1.button("⬅️", use_container_width=True, help="Mês Anterior", key=f"prev_{contexto}"):
         st.session_state.periodo_selecionado -= relativedelta(months=1); st.rerun()
     mes_ano_str = st.session_state.periodo_selecionado.strftime("%B de %Y").capitalize()
     col2.subheader(mes_ano_str)
-    if col3.button("➡️", use_container_width=True, help="Próximo Mês"):
+    if col3.button("➡️", use_container_width=True, help="Próximo Mês", key=f"next_{contexto}"):
         st.session_state.periodo_selecionado += relativedelta(months=1); st.rerun()
 
 # --- 4. INTERFACE PRINCIPAL ---
@@ -142,10 +102,12 @@ with tab_lancamento:
 # --- Lógica de Filtragem ---
 periodo = st.session_state.periodo_selecionado
 df_transacoes = st.session_state.transacoes.copy()
+df_transacoes['Data/Hora'] = pd.to_datetime(df_transacoes['Data/Hora'], errors='coerce')
+df_transacoes['Valor'] = pd.to_numeric(df_transacoes['Valor'], errors='coerce').fillna(0)
 transacoes_filtradas = df_transacoes[(df_transacoes['Data/Hora'].dt.year == periodo.year) & (df_transacoes['Data/Hora'].dt.month == periodo.month)]
 
 with tab_historico:
-    exibir_navegador_mes()
+    exibir_navegador_mes(contexto="historico") # MUDANÇA: Passando um contexto único
     st.header("Resumo Financeiro do Mês")
     total_receitas = transacoes_filtradas[transacoes_filtradas['Tipo'] == 'Receita']['Valor'].sum()
     total_despesas = transacoes_filtradas[transacoes_filtradas['Tipo'] == 'Despesa']['Valor'].sum()
@@ -155,9 +117,10 @@ with tab_historico:
     st.data_editor(transacoes_filtradas.sort_values(by="Data/Hora", ascending=False), hide_index=True, use_container_width=True)
 
 with tab_freelancer:
-    exibir_navegador_mes()
+    exibir_navegador_mes(contexto="freelancer") # MUDANÇA: Passando um contexto único
     st.header("Gestor de Trabalhos Freelancer")
     df_freelas = st.session_state.freelas.copy()
+    df_freelas['Término'] = pd.to_datetime(df_freelas['Término'], errors='coerce')
     freelas_concluidos_filtrados = df_freelas[(df_freelas['Status'] == 'Concluído') & (df_freelas['Término'].dt.year == periodo.year) & (df_freelas['Término'].dt.month == periodo.month)]
     with st.expander("➕ Registrar Novo Trabalho"):
         with st.form("novo_freela_form", clear_on_submit=True):
@@ -176,11 +139,12 @@ with tab_freelancer:
     trabalhos_andamento = st.session_state.freelas[st.session_state.freelas['Status'] == 'Em Andamento'].copy()
     if trabalhos_andamento.empty: st.info("Nenhum trabalho em andamento.")
     else:
+        trabalhos_andamento['Início'] = pd.to_datetime(trabalhos_andamento['Início'], errors='coerce')
         for idx, job in trabalhos_andamento.iterrows():
             with st.container(border=True):
                 col1, col2 = st.columns([3, 1])
                 with col1:
-                    st.write(f"**{job['Descrição']}**")
+                    st.write(f"**{job['Descrição']}**"); 
                     if pd.notna(job['Início']): st.write(f"Iniciado em: {job['Início'].strftime('%d/%m/%Y às %H:%M')}")
                     if job['Modo de Cobrança'] == 'Valor por Hora': st.write(f"Cobrança: R$ {job['Valor da Hora']:.2f}/hora")
                     else: st.write(f"Cobrança: R$ {job['Valor Fixo']:.2f} (valor fixo)")
@@ -202,6 +166,7 @@ with tab_freelancer:
 with tab_reserva:
     st.header("🛡️ Reserva de Emergência")
     movimentacoes = st.session_state.reserva_movimentacoes.copy()
+    movimentacoes['Valor'] = pd.to_numeric(movimentacoes['Valor'], errors='coerce').fillna(0)
     valor_atual = movimentacoes[movimentacoes['Tipo'] == 'Aporte']['Valor'].sum() - movimentacoes[movimentacoes['Tipo'] == 'Retirada']['Valor'].sum()
     meta_reserva = st.session_state.reserva_meta
     percentual_completo = (valor_atual / meta_reserva) if meta_reserva > 0 else 0.0
@@ -232,10 +197,11 @@ with tab_reserva:
             st.success("Nova meta salva com sucesso!"); st.rerun()
     st.divider()
     st.subheader("Histórico Geral de Movimentações da Reserva")
-    st.data_editor(st.session_state.reserva_movimentacoes.sort_values(by="Data", ascending=False), use_container_width=True, hide_index=True)
+    movimentacoes['Data'] = pd.to_datetime(movimentacoes['Data'], errors='coerce')
+    st.data_editor(movimentacoes.sort_values(by="Data", ascending=False), use_container_width=True, hide_index=True)
 
 with tab_ia:
-    exibir_navegador_mes()
+    exibir_navegador_mes(contexto="ia") # MUDANÇA: Passando um contexto único
     st.header("Análise de Gastos do Mês")
     despesas_filtradas = transacoes_filtradas[transacoes_filtradas['Tipo'] == 'Despesa']
     if not despesas_filtradas.empty:

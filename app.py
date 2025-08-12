@@ -154,6 +154,80 @@ with tab_freelancer:
                     else: st.write(f"Cobrança: R$ {job['Valor Fixo']:.2f} (valor fixo)")
                 with col2:
                     if st.button("🏁 Finalizar", key=f"finalizar_{idx}"):
-                        termino = datetime.now(); valor_final = 0.0
+                        termino = datetime.now()
+                        valor_final = 0.0
                         if job['Modo de Cobrança'] == 'Valor por Hora':
-                            duracao = termino - 
+                            # AQUI ESTAVA O ERRO. CORRIGIDO PARA SER COMPLETO E MAIS SEGURO.
+                            inicio_dt = pd.to_datetime(job['Início'])
+                            duracao = termino - inicio_dt
+                            horas = duracao.total_seconds() / 3600
+                            valor_final = horas * job['Valor da Hora']
+                        else:
+                            valor_final = job['Valor Fixo']
+                        st.session_state.freelas.at[idx, 'Status'] = 'Concluído'
+                        st.session_state.freelas.at[idx, 'Término'] = termino
+                        st.session_state.freelas.at[idx, 'Valor a Receber'] = valor_final
+                        salvar_dados_csv(st.session_state.freelas, 'freelancer_jobs.csv')
+                        st.success("Trabalho finalizado!"); st.rerun()
+    st.divider()
+    st.subheader("Histórico de Trabalhos Concluídos no Mês")
+    st.data_editor(freelas_concluidos_filtrados, use_container_width=True, hide_index=True)
+
+with tab_reserva:
+    st.header("🛡️ Reserva de Emergência")
+    movimentacoes = st.session_state.reserva_movimentacoes.copy()
+    movimentacoes['Valor'] = pd.to_numeric(movimentacoes['Valor'], errors='coerce').fillna(0)
+    valor_atual = movimentacoes[movimentacoes['Tipo'] == 'Aporte']['Valor'].sum() - movimentacoes[movimentacoes['Tipo'] == 'Retirada']['Valor'].sum()
+    meta_reserva = st.session_state.reserva_meta
+    percentual_completo = (valor_atual / meta_reserva) if meta_reserva > 0 else 0.0
+    st.progress(percentual_completo, text=f"{percentual_completo:.1%} Completo")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Meta", f"R$ {meta_reserva:,.2f}"); col2.metric("Valor Atual", f"R$ {valor_atual:,.2f}"); col3.metric("Faltam", f"R$ {max(0, meta_reserva - valor_atual):,.2f}")
+    with st.expander("💸 Registrar Movimentação na Reserva"):
+        with st.form("movimentacao_reserva_form", clear_on_submit=True):
+            valor_movimentacao = st.number_input("Valor da movimentação", min_value=0.01, format="%.2f")
+            col_btn1, col_btn2 = st.columns(2)
+            if col_btn1.form_submit_button("Adicionar Aporte 💵"):
+                nova_mov = {'Data': datetime.now(), 'Tipo': 'Aporte', 'Valor': valor_movimentacao}
+                st.session_state.reserva_movimentacoes = pd.concat([st.session_state.reserva_movimentacoes, pd.DataFrame([nova_mov])], ignore_index=True)
+                salvar_dados_csv(st.session_state.reserva_movimentacoes, 'reserva_movimentacoes.csv')
+                st.success("Aporte registrado!"); st.rerun()
+            if col_btn2.form_submit_button("Realizar Retirada 🆘"):
+                if valor_movimentacao > valor_atual: st.error("Valor da retirada maior que o saldo atual!")
+                else:
+                    nova_mov = {'Data': datetime.now(), 'Tipo': 'Retirada', 'Valor': valor_movimentacao}
+                    st.session_state.reserva_movimentacoes = pd.concat([st.session_state.reserva_movimentacoes, pd.DataFrame([nova_mov])], ignore_index=True)
+                    salvar_dados_csv(st.session_state.reserva_movimentacoes, 'reserva_movimentacoes.csv')
+                    st.warning("Retirada registrada!"); st.rerun()
+    with st.expander("⚙️ Configurar Meta da Reserva"):
+        nova_meta = st.number_input("Defina o valor total da sua reserva de emergência", min_value=1.0, value=meta_reserva, format="%.2f")
+        if st.button("Salvar Nova Meta"):
+            st.session_state.reserva_meta = nova_meta
+            salvar_dados_json({'meta': nova_meta}, 'reserva_meta.json')
+            st.success("Nova meta salva com sucesso!"); st.rerun()
+    st.divider()
+    st.subheader("Histórico Geral de Movimentações da Reserva")
+    movimentacoes['Data'] = pd.to_datetime(movimentacoes['Data'], errors='coerce')
+    st.data_editor(movimentacoes.sort_values(by="Data", ascending=False), use_container_width=True, hide_index=True)
+
+with tab_ia:
+    exibir_navegador_mes()
+    st.header("Análise de Gastos do Mês")
+    despesas_filtradas = transacoes_filtradas[transacoes_filtradas['Tipo'] == 'Despesa']
+    if not despesas_filtradas.empty:
+        df_para_grafico = despesas_filtradas.copy()
+        df_para_grafico['Subcategoria'].replace(['', 'N/A'], np.nan, inplace=True)
+        df_para_grafico.dropna(subset=['Categoria', 'Subcategoria'], inplace=True)
+        if not df_para_grafico.empty:
+            fig = px.sunburst(df_para_grafico, path=['Categoria', 'Subcategoria'], values='Valor')
+            st.plotly_chart(fig, use_container_width=True)
+        else: st.info("Não há dados com Categoria e Subcategoria detalhadas para analisar neste mês.")
+    else: st.info("Não há despesas neste mês para analisar.")
+    st.divider()
+    st.header("FinBot: Seu Assistente de Investimentos")
+    with st.container(border=True):
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+        if prompt := st.chat_input("Pergunte sobre investimentos..."):
+            st.session_state.messages.append({"role": "user", "content": pr

@@ -10,14 +10,12 @@ import numpy as np
 st.set_page_config(page_title="Finanças com IA", page_icon="🤖💰", layout="centered", initial_sidebar_state="collapsed")
 
 # --- CSS Customizado ---
-# MUDANÇA: Adicionada regra para garantir texto branco no chatbot
 st.markdown("""
 <style>
     .block-container { padding-top: 1.5rem; padding-bottom: 2rem; }
     .st-emotion-cache-16txtl3 { padding: 20px; background-color: #1a1a1a; border-radius: 10px; }
     [data-testid="metric-container"] { background-color: #222; border: 1px solid #333; padding: 15px; border-radius: 10px; color: white; }
     h2 { font-size: 1.5rem; color: #FAFAFA; border-bottom: 2px solid #333; padding-bottom: 5px; }
-    /* Garante que o texto dentro das mensagens do chat seja branco e bem legível */
     [data-testid="stChatMessage"] { background-color: #333; border-radius: 10px; padding: 1rem; }
     [data-testid="stChatMessage"] p { color: #FFFFFF; }
 </style>
@@ -30,7 +28,6 @@ st.markdown("""
 def carregar_dados():
     try:
         df = pd.read_csv('transacoes.csv')
-        # ... (lógica de migração existente) ...
         if 'Data' in df.columns and 'Data/Hora' not in df.columns: df.rename(columns={'Data': 'Data/Hora'}, inplace=True)
         if 'Subcategoria' not in df.columns: df['Subcategoria'] = 'N/A'
         if 'Descrição da IA' not in df.columns: df['Descrição da IA'] = 'N/A'
@@ -43,7 +40,7 @@ def carregar_dados():
 def salvar_dados(df):
     df.to_csv('transacoes.csv', index=False)
 
-# MUDANÇA: Novas funções para gerenciar os trabalhos de Freelancer
+# Funções para Freelancer
 def carregar_freelas():
     try:
         df = pd.read_csv('freelancer_jobs.csv')
@@ -56,9 +53,8 @@ def carregar_freelas():
 def salvar_freelas(df):
     df.to_csv('freelancer_jobs.csv', index=False)
 
-# Funções da IA (sem alterações)
+# Funções da IA
 def categorizar_com_ia(descricao):
-    # ... (código existente) ...
     if not descricao: return "Outros", "N/A"
     try:
         client = groq.Client(api_key=st.secrets["GROQ_API_KEY"])
@@ -68,7 +64,6 @@ def categorizar_com_ia(descricao):
     except Exception as e: return "Outros", "N/A"
 
 def chamar_chatbot_ia(historico_conversa, resumo_financeiro):
-    # ... (código existente) ...
     try:
         client = groq.Client(api_key=st.secrets["GROQ_API_KEY"])
         mensagens_para_api = [{"role": "system", "content": f"Você é FinBot, um assistente financeiro educativo. Use o resumo financeiro ({resumo_financeiro}) para dar noções gerais sobre investimentos. Sempre inclua um aviso para procurar um profissional e NUNCA se apresente como um conselheiro licenciado."}]
@@ -82,17 +77,14 @@ def chamar_chatbot_ia(historico_conversa, resumo_financeiro):
 if 'transacoes' not in st.session_state: st.session_state.transacoes = carregar_dados()
 if 'sugestoes' not in st.session_state: st.session_state.sugestoes = {"categoria": "", "subcategoria": ""}
 if "messages" not in st.session_state: st.session_state.messages = [{"role": "assistant", "content": "Olá! Sou o FinBot. Como posso ajudar com suas dúvidas sobre investimentos?"}]
-# MUDANÇA: Inicializa o DataFrame de freelas
 if 'freelas' not in st.session_state: st.session_state.freelas = carregar_freelas()
 
 
 # --- 4. Interface Principal ---
 st.title("🤖 Finanças & Freelas com IA")
-# MUDANÇA: Adicionada a nova aba "Freelancer"
 tab_lancamento, tab_historico, tab_freelancer, tab_ia = st.tabs(["✍️ Lançar", "📊 Histórico", "💻 Freelancer", "🤖 Análise IA"])
 
-with tab_lancamento: # Esta aba não muda
-    # ... (código existente da aba de lançamento) ...
+with tab_lancamento:
     st.header("Adicionar Nova Transação")
     with st.form("nova_transacao_form"):
         descricao = st.text_input("Descrição", placeholder="Ex: Óculos de sol novos")
@@ -122,8 +114,7 @@ with tab_lancamento: # Esta aba não muda
                 st.session_state.sugestoes = {"categoria": "", "subcategoria": ""}
                 st.rerun()
 
-with tab_historico: # Esta aba não muda
-    # ... (código existente da aba de histórico) ...
+with tab_historico:
     st.header("Resumo Financeiro")
     total_receitas = st.session_state.transacoes[st.session_state.transacoes['Tipo'] == 'Receita']['Valor'].sum()
     total_despesas = st.session_state.transacoes[st.session_state.transacoes['Tipo'] == 'Despesa']['Valor'].sum()
@@ -147,28 +138,20 @@ with tab_historico: # Esta aba não muda
              st.success(f"Lançamento ID {indice_para_apagar} apagado!")
              st.rerun()
 
-# MUDANÇA: Construção da nova aba "Freelancer"
 with tab_freelancer:
     st.header("Gestor de Trabalhos Freelancer")
-
     with st.expander("➕ Registrar Novo Trabalho"):
         with st.form("novo_freela_form", clear_on_submit=True):
             freela_descricao = st.text_input("Descrição do Trabalho", placeholder="Ex: Site para Padaria do Bairro")
             modo_cobranca = st.selectbox("Modo de Cobrança", ["Valor por Hora", "Valor Fixo"])
-            
             valor_hora = 0.0
             valor_fixo = 0.0
             if modo_cobranca == "Valor por Hora":
                 valor_hora = st.number_input("Seu valor por hora (R$)", min_value=1.0, format="%.2f")
             else:
                 valor_fixo = st.number_input("Valor fixo do projeto (R$)", min_value=1.0, format="%.2f")
-
             if st.form_submit_button("🚀 Iniciar Trabalho"):
-                novo_freela = {
-                    'Descrição': freela_descricao, 'Status': 'Em Andamento', 'Modo de Cobrança': modo_cobranca,
-                    'Valor da Hora': valor_hora, 'Valor Fixo': valor_fixo, 'Início': datetime.now(),
-                    'Término': pd.NaT, 'Valor a Receber': 0.0
-                }
+                novo_freela = {'Descrição': freela_descricao, 'Status': 'Em Andamento', 'Modo de Cobrança': modo_cobranca, 'Valor da Hora': valor_hora, 'Valor Fixo': valor_fixo, 'Início': datetime.now(), 'Término': pd.NaT, 'Valor a Receber': 0.0}
                 st.session_state.freelas = pd.concat([st.session_state.freelas, pd.DataFrame([novo_freela])], ignore_index=True)
                 salvar_freelas(st.session_state.freelas)
                 st.success(f"Trabalho '{freela_descricao}' iniciado!")
@@ -176,7 +159,6 @@ with tab_freelancer:
 
     st.divider()
     st.subheader("Em Andamento")
-    
     trabalhos_andamento = st.session_state.freelas[st.session_state.freelas['Status'] == 'Em Andamento']
     if trabalhos_andamento.empty:
         st.info("Nenhum trabalho em andamento. Inicie um novo acima!")
@@ -201,7 +183,6 @@ with tab_freelancer:
                             valor_final = horas * job['Valor da Hora']
                         else:
                             valor_final = job['Valor Fixo']
-                        
                         st.session_state.freelas.at[idx, 'Status'] = 'Concluído'
                         st.session_state.freelas.at[idx, 'Término'] = termino
                         st.session_state.freelas.at[idx, 'Valor a Receber'] = valor_final
@@ -212,11 +193,9 @@ with tab_freelancer:
     st.divider()
     st.subheader("Histórico de Trabalhos Concluídos")
     trabalhos_concluidos = st.session_state.freelas[st.session_state.freelas['Status'] == 'Concluído']
-    st.data_editor(trabalhos_concluidos, use_container_width=True, hide_index=True, disabled=True,
-                   column_config={"Valor a Receber": st.column_config.NumberColumn(format="R$ %.2f")})
+    st.data_editor(trabalhos_concluidos, use_container_width=True, hide_index=True, disabled=True, column_config={"Valor a Receber": st.column_config.NumberColumn(format="R$ %.2f")})
 
-with tab_ia: # Esta aba não muda, exceto pelo CSS já aplicado
-    # ... (código existente da aba de análise com IA) ...
+with tab_ia:
     st.header("Análise de Gastos com IA")
     despesas_df = st.session_state.transacoes[st.session_state.transacoes['Tipo'] == 'Despesa']
     if not despesas_df.empty:
@@ -227,8 +206,10 @@ with tab_ia: # Esta aba não muda, exceto pelo CSS já aplicado
             fig = px.sunburst(df_para_grafico, path=['Categoria', 'Subcategoria'], values='Valor', title='Distribuição de Gastos por Categoria e Subcategoria', color_discrete_sequence=px.colors.qualitative.Pastel)
             fig.update_layout(margin=dict(t=50, l=0, r=0, b=0))
             st.plotly_chart(fig, use_container_width=True)
-        else: st.info("Não há dados com Categoria e Subcategoria detalhadas para gerar a análise.")
-    else: st.info("Adicione algumas despesas para ver a análise de gastos.")
+        else:
+            st.info("Não há dados com Categoria e Subcategoria detalhadas para gerar a análise.")
+    else:
+        st.info("Adicione algumas despesas para ver a análise de gastos.")
     st.divider()
     st.header("FinBot: Seu Assistente de Investimentos")
     with st.container(border=True):
@@ -237,7 +218,12 @@ with tab_ia: # Esta aba não muda, exceto pelo CSS já aplicado
                 st.markdown(message["content"])
         if prompt := st.chat_input("Pergunte sobre investimentos..."):
             st.session_state.messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user"): st.markdown(prompt)
+            with st.chat_message("user"):
+                st.markdown(prompt)
             with st.chat_message("assistant"):
                 with st.spinner("FinBot está pensando..."):
-               
+                    total_receitas = st.session_state.transacoes[st.session_state.transacoes['Tipo'] == 'Receita']['Valor'].sum()
+                    resumo_financeiro_atual = f"Receita mensal total do usuário: R${total_receitas:,.2f}"
+                    resposta = chamar_chatbot_ia(st.session_state.messages, resumo_financeiro_atual)
+                    st.markdown(resposta)
+            st.session_state.messages.append({"role": "assistant", "content": resposta})

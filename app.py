@@ -40,12 +40,7 @@ def categorizar_com_ia(descricao):
         return "Outros", "N/A"
 
 def chamar_chatbot_ia(historico_conversa, resumo_financeiro):
-    # AQUI ESTAVA O ERRO DE SINTAXE. CORRIGIDO PARA SER MAIS SEGURO.
-    prompt_sistema = (
-        "Você é FinBot, um assistente financeiro educativo. Use o seguinte resumo financeiro do usuário para personalizar suas respostas: "
-        f"{resumo_financeiro}. "
-        "Dê noções gerais sobre investimentos. Sempre inclua um aviso para procurar um profissional e NUNCA se apresente como um conselheiro licenciado."
-    )
+    prompt_sistema = (f"Você é FinBot, um assistente financeiro educativo. Use o seguinte resumo financeiro do usuário para personalizar suas respostas: {resumo_financeiro}. Dê noções gerais sobre investimentos. Sempre inclua um aviso para procurar um profissional e NUNCA se apresente como um conselheiro licenciado.")
     try:
         client = groq.Client(api_key=st.secrets["GROQ_API_KEY"])
         mensagens_para_api = [{"role": "system", "content": prompt_sistema}]
@@ -161,25 +156,4 @@ with tab_freelancer:
                     if st.button("🏁 Finalizar", key=f"finalizar_{idx}"):
                         termino = datetime.now(); valor_final = 0.0
                         if job['Modo de Cobrança'] == 'Valor por Hora':
-                            duracao = termino - pd.to_datetime(job['Início']); horas = duracao.total_seconds() / 3600
-                            valor_final = horas * job['Valor da Hora']
-                        else: valor_final = job['Valor Fixo']
-                        st.session_state.freelas.at[idx, 'Status'] = 'Concluído'; st.session_state.freelas.at[idx, 'Término'] = termino
-                        st.session_state.freelas.at[idx, 'Valor a Receber'] = valor_final
-                        salvar_dados_csv(st.session_state.freelas, 'freelancer_jobs.csv')
-                        st.success("Trabalho finalizado!"); st.rerun()
-    st.divider()
-    st.subheader("Histórico de Trabalhos Concluídos no Mês")
-    st.data_editor(freelas_concluidos_filtrados, use_container_width=True, hide_index=True)
-
-with tab_reserva:
-    st.header("🛡️ Reserva de Emergência")
-    movimentacoes = st.session_state.reserva_movimentacoes.copy()
-    movimentacoes['Valor'] = pd.to_numeric(movimentacoes['Valor'], errors='coerce').fillna(0)
-    valor_atual = movimentacoes[movimentacoes['Tipo'] == 'Aporte']['Valor'].sum() - movimentacoes[movimentacoes['Tipo'] == 'Retirada']['Valor'].sum()
-    meta_reserva = st.session_state.reserva_meta
-    percentual_completo = (valor_atual / meta_reserva) if meta_reserva > 0 else 0.0
-    st.progress(percentual_completo, text=f"{percentual_completo:.1%} Completo")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Meta", f"R$ {meta_reserva:,.2f}"); col2.metric("Valor Atual", f"R$ {valor_atual:,.2f}"); col3.metric("Faltam", f"R$ {max(0, meta_reserva - valor_atual):,.2f}")
-    with 
+                            duracao = termino - 

@@ -36,8 +36,7 @@ def categorizar_com_ia(descricao):
         response_json = json.loads(chat_completion.choices[0].message.content)
         return response_json.get("categoria", "Outros"), response_json.get("subcategoria", "N/A")
     except Exception as e:
-        st.error(f"Erro ao categorizar: {e}")
-        return "Outros", "N/A"
+        st.error(f"Erro ao categorizar: {e}"); return "Outros", "N/A"
 
 def chamar_chatbot_ia(historico_conversa, resumo_financeiro):
     prompt_sistema = (f"Você é FinBot, um assistente financeiro educativo. Use o seguinte resumo financeiro do usuário para personalizar suas respostas: {resumo_financeiro}. Dê noções gerais sobre investimentos. Sempre inclua um aviso para procurar um profissional e NUNCA se apresente como um conselheiro licenciado.")
@@ -48,8 +47,7 @@ def chamar_chatbot_ia(historico_conversa, resumo_financeiro):
         chat_completion = client.chat.completions.create(messages=mensagens_para_api, model="llama3-70b-8192", temperature=0.7)
         return chat_completion.choices[0].message.content
     except Exception as e:
-        st.error(f"Erro no chatbot: {e}")
-        return "Desculpe, estou com um problema para me conectar. Tente novamente."
+        st.error(f"Erro no chatbot: {e}"); return "Desculpe, estou com um problema para me conectar. Tente novamente."
 
 # --- 3. INICIALIZAÇÃO E LÓGICA DE PERÍODO ---
 if 'periodo_selecionado' not in st.session_state: st.session_state.periodo_selecionado = datetime.now()
@@ -63,13 +61,11 @@ if "messages" not in st.session_state: st.session_state.messages = [{"role": "as
 def exibir_navegador_mes():
     col1, col2, col3 = st.columns([1, 4, 1])
     if col1.button("⬅️", use_container_width=True, help="Mês Anterior"):
-        st.session_state.periodo_selecionado -= relativedelta(months=1)
-        st.rerun()
+        st.session_state.periodo_selecionado -= relativedelta(months=1); st.rerun()
     mes_ano_str = st.session_state.periodo_selecionado.strftime("%B de %Y").capitalize()
     col2.subheader(mes_ano_str)
     if col3.button("➡️", use_container_width=True, help="Próximo Mês"):
-        st.session_state.periodo_selecionado += relativedelta(months=1)
-        st.rerun()
+        st.session_state.periodo_selecionado += relativedelta(months=1); st.rerun()
 
 # --- 4. INTERFACE PRINCIPAL ---
 st.title("🤖 Finanças & Freelas com IA")
@@ -96,9 +92,7 @@ with tab_lancamento:
         if st.form_submit_button("✅ Salvar Transação"):
             if not descricao or valor <= 0: st.warning("Por favor, preencha a descrição e o valor.")
             else:
-                data_hora_atual = datetime.now()
-                sugestao_ia_texto = f"{st.session_state.sugestoes.get('categoria', 'N/A')} -> {st.session_state.sugestoes.get('subcategoria', 'N/A')}"
-                nova_transacao = pd.DataFrame([[data_hora_atual, descricao, valor, tipo, categoria_final, subcategoria_final, sugestao_ia_texto]], columns=['Data/Hora', 'Descrição', 'Valor', 'Tipo', 'Categoria', 'Subcategoria', 'Descrição da IA'])
+                nova_transacao = pd.DataFrame([[datetime.now(), descricao, valor, tipo, categoria_final, subcategoria_final, f"{st.session_state.sugestoes.get('categoria', 'N/A')} -> {st.session_state.sugestoes.get('subcategoria', 'N/A')}" ]], columns=['Data/Hora', 'Descrição', 'Valor', 'Tipo', 'Categoria', 'Subcategoria', 'Descrição da IA'])
                 st.session_state.transacoes = pd.concat([st.session_state.transacoes, nova_transacao], ignore_index=True)
                 salvar_dados_csv(st.session_state.transacoes, 'transacoes.csv')
                 st.success("Transação salva com sucesso!"); st.session_state.sugestoes = {"categoria": "", "subcategoria": ""}; st.rerun()
@@ -157,7 +151,6 @@ with tab_freelancer:
                         termino = datetime.now()
                         valor_final = 0.0
                         if job['Modo de Cobrança'] == 'Valor por Hora':
-                            # AQUI ESTAVA O ERRO. CORRIGIDO PARA SER COMPLETO E MAIS SEGURO.
                             inicio_dt = pd.to_datetime(job['Início'])
                             duracao = termino - inicio_dt
                             horas = duracao.total_seconds() / 3600
@@ -230,4 +223,14 @@ with tab_ia:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
         if prompt := st.chat_input("Pergunte sobre investimentos..."):
-            st.session_state.messages.append({"role": "user", "content": pr
+            # AQUI ESTAVA O ERRO. CORRIGIDO PARA SER COMPLETO.
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+            with st.chat_message("assistant"):
+                with st.spinner("FinBot está pensando..."):
+                    receitas_mes = transacoes_filtradas[transacoes_filtradas['Tipo'] == 'Receita']['Valor'].sum()
+                    resumo_financeiro_atual = f"Receita no mês de {st.session_state.periodo_selecionado.strftime('%B')}: R${receitas_mes:,.2f}"
+                    resposta = chamar_chatbot_ia(st.session_state.messages, resumo_financeiro_atual)
+                    st.markdown(resposta)
+            st.session_state.messages.append({"role": "assistant", "content": resposta})

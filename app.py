@@ -17,7 +17,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. FUNÇÕES DE DADOS (COM LÓGICA DE MIGRAÇÃO E TIPAGEM ROBUSTA) ---
+# --- 2. FUNÇÕES DE DADOS (COM LÓGICA DE MIGRAÇÃO ROBUSTA) ---
 
 def salvar_dados_csv(df, caminho_arquivo): df.to_csv(caminho_arquivo, index=False)
 def salvar_dados_json(dados, caminho_arquivo):
@@ -140,7 +140,9 @@ with tab_lancamento:
 # --- Lógica de Filtragem ---
 periodo = st.session_state.periodo_selecionado
 df_transacoes = st.session_state.transacoes.copy()
-transacoes_filtradas = df_transacoes[(df_transacoes['Data/Hora'].dt.year == periodo.year) & (df_transacoes['Data/Hora'].dt.month == periodo.month)]
+df_transacoes['Data/Hora'] = pd.to_datetime(df_transacoes['Data/Hora'], errors='coerce') # Guarda de Tipo
+transacoes_filtradas = df_transacoes.dropna(subset=['Data/Hora'])
+transacoes_filtradas = transacoes_filtradas[(transacoes_filtradas['Data/Hora'].dt.year == periodo.year) & (transacoes_filtradas['Data/Hora'].dt.month == periodo.month)]
 
 with tab_historico:
     exibir_navegador_mes(contexto="historico")
@@ -158,9 +160,9 @@ with tab_historico:
                 col1, col2, col3, col4 = st.columns([4, 2, 2, 1])
                 with col1:
                     st.write(f"**{row['Descrição']}**")
-                    st.caption(f"{row['Categoria']} > {row.get('Subcategoria', 'N/A')}")
+                    st.caption(f"{row.get('Categoria', 'N/A')} > {row.get('Subcategoria', 'N/A')}")
                 with col2:
-                    valor_formatado = f"R$ {row['Valor']:.2f}"
+                    valor_formatado = f"R$ {row.get('Valor', 0):.2f}"
                     if row['Tipo'] == 'Receita': st.markdown(f"<p style='color:green; font-weight:bold;'>{valor_formatado}</p>", unsafe_allow_html=True)
                     else: st.markdown(f"<p style='color:red; font-weight:bold;'>{valor_formatado}</p>", unsafe_allow_html=True)
                 with col3:
@@ -175,7 +177,10 @@ with tab_freelancer:
     exibir_navegador_mes(contexto="freelancer")
     st.header("Gestor de Trabalhos Freelancer")
     df_freelas = st.session_state.freelas.copy()
-    freelas_concluidos_filtrados = df_freelas[(df_freelas['Status'] == 'Concluído') & (df_freelas['Término'].dt.year == periodo.year) & (df_freelas['Término'].dt.month == periodo.month)]
+    df_freelas['Término'] = pd.to_datetime(df_freelas['Término'], errors='coerce') # Guarda de Tipo
+    df_freelas_concluidos = df_freelas.dropna(subset=['Término'])
+    freelas_concluidos_filtrados = df_freelas_concluidos[(df_freelas_concluidos['Status'] == 'Concluído') & (df_freelas_concluidos['Término'].dt.year == periodo.year) & (df_freelas_concluidos['Término'].dt.month == periodo.month)]
+    
     with st.expander("➕ Registrar Novo Trabalho"):
         with st.form("novo_freela_form", clear_on_submit=True):
             freela_descricao = st.text_input("Descrição do Trabalho", placeholder="Ex: Site para Padaria do Bairro")
@@ -191,6 +196,7 @@ with tab_freelancer:
     st.divider()
     st.subheader("Em Andamento")
     trabalhos_andamento = st.session_state.freelas[st.session_state.freelas['Status'] == 'Em Andamento'].copy()
+    trabalhos_andamento['Início'] = pd.to_datetime(trabalhos_andamento['Início'], errors='coerce')
     if trabalhos_andamento.empty: st.info("Nenhum trabalho em andamento.")
     else:
         for idx, job in trabalhos_andamento.iterrows():
@@ -199,8 +205,7 @@ with tab_freelancer:
                 with col1:
                     st.write(f"**{job['Descrição']}**")
                     if pd.notna(job['Início']): st.write(f"Iniciado em: {job['Início'].strftime('%d/%m/%Y às %H:%M')}")
-                    if job['Modo de Cobrança'] == 'Valor por Hora': st.write(f"Cobrança: R$ {job['Valor da Hora']:.2f}/hora")
-                    else: st.write(f"Cobrança: R$ {job['Valor Fixo']:.2f} (valor fixo)")
+                    st.write(f"Cobrança: R$ {job.get('Valor da Hora', 0):.2f}/hora" if job.get('Modo de Cobrança') == 'Valor por Hora' else f"Cobrança: R$ {job.get('Valor Fixo', 0):.2f} (valor fixo)")
                 with col2:
                     if st.button("🏁 Finalizar", key=f"finalizar_{idx}"):
                         termino = datetime.now(); valor_final = 0.0

@@ -17,7 +17,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. FUNÇÕES DE DADOS (COM LÓGICA DE MIGRAÇÃO ROBUSTA) ---
+# --- 2. FUNÇÕES DE DADOS (COM LÓGICA DE MIGRAÇÃO E TIPAGEM ROBUSTA) ---
 
 def salvar_dados_csv(df, caminho_arquivo): df.to_csv(caminho_arquivo, index=False)
 def salvar_dados_json(dados, caminho_arquivo):
@@ -28,16 +28,12 @@ def carregar_transacoes():
     colunas_esperadas = ['Data/Hora', 'Descrição', 'Valor', 'Tipo', 'Categoria', 'Subcategoria', 'Descrição da IA']
     try:
         df = pd.read_csv(caminho_arquivo)
-        # Lógica de migração
         if 'Data' in df.columns and 'Data/Hora' not in df.columns:
             df.rename(columns={'Data': 'Data/Hora'}, inplace=True)
-        colunas_alteradas = False
         for col in colunas_esperadas:
-            if col not in df.columns:
-                df[col] = 'N/A'; colunas_alteradas = True
+            if col not in df.columns: df[col] = np.nan
         df['Data/Hora'] = pd.to_datetime(df['Data/Hora'], errors='coerce')
         df['Valor'] = pd.to_numeric(df['Valor'], errors='coerce').fillna(0)
-        if colunas_alteradas: salvar_dados_csv(df, caminho_arquivo)
         return df
     except (FileNotFoundError, pd.errors.EmptyDataError):
         return pd.DataFrame(columns=colunas_esperadas)
@@ -47,8 +43,12 @@ def carregar_freelas():
     colunas_esperadas = ['Descrição', 'Status', 'Modo de Cobrança', 'Valor da Hora', 'Valor Fixo', 'Início', 'Término', 'Valor a Receber']
     try:
         df = pd.read_csv(caminho_arquivo)
+        for col in colunas_esperadas:
+            if col not in df.columns: df[col] = np.nan
         df['Início'] = pd.to_datetime(df['Início'], errors='coerce')
         df['Término'] = pd.to_datetime(df['Término'], errors='coerce')
+        for col in ['Valor da Hora', 'Valor Fixo', 'Valor a Receber']:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
         return df
     except (FileNotFoundError, pd.errors.EmptyDataError):
         return pd.DataFrame(columns=colunas_esperadas)
@@ -114,7 +114,6 @@ tab_lancamento, tab_historico, tab_freelancer, tab_reserva, tab_ia = st.tabs(["�
 with tab_lancamento:
     st.header("Adicionar Nova Transação")
     with st.form("nova_transacao_form"):
-        #... (código mantido)
         descricao = st.text_input("Descrição", placeholder="Ex: Óculos de sol novos")
         col1, col2 = st.columns(2)
         with col1: valor = st.number_input("Valor", min_value=0.01, format="%.2f")
@@ -143,7 +142,6 @@ periodo = st.session_state.periodo_selecionado
 df_transacoes = st.session_state.transacoes.copy()
 transacoes_filtradas = df_transacoes[(df_transacoes['Data/Hora'].dt.year == periodo.year) & (df_transacoes['Data/Hora'].dt.month == periodo.month)]
 
-# MUDANÇA PRINCIPAL AQUI
 with tab_historico:
     exibir_navegador_mes(contexto="historico")
     st.header("Resumo Financeiro do Mês")
@@ -151,45 +149,29 @@ with tab_historico:
     total_despesas = transacoes_filtradas[transacoes_filtradas['Tipo'] == 'Despesa']['Valor'].sum()
     col1, col2, col3 = st.columns(3)
     col1.metric("Receitas", f"R${total_receitas:,.2f}"); col2.metric("Despesas", f"R${total_despesas:,.2f}"); col3.metric("Saldo", f"R${total_receitas - total_despesas:,.2f}")
-    
-    st.divider()
     st.header("Transações do Mês")
-
     if transacoes_filtradas.empty:
         st.info("Nenhuma transação registrada neste mês.")
     else:
-        # Itera sobre o DataFrame filtrado para exibir cada transação com um botão de exclusão
         for index, row in transacoes_filtradas.sort_values(by="Data/Hora", ascending=False).iterrows():
             with st.container(border=True):
                 col1, col2, col3, col4 = st.columns([4, 2, 2, 1])
-                # Coluna 1: Descrição e Categoria
                 with col1:
                     st.write(f"**{row['Descrição']}**")
-                    st.caption(f"{row['Categoria']} > {row['Subcategoria']}")
-                # Coluna 2: Valor e Tipo
+                    st.caption(f"{row['Categoria']} > {row.get('Subcategoria', 'N/A')}")
                 with col2:
                     valor_formatado = f"R$ {row['Valor']:.2f}"
-                    if row['Tipo'] == 'Receita':
-                        st.markdown(f"<p style='color:green; font-weight:bold;'>{valor_formatado}</p>", unsafe_allow_html=True)
-                    else:
-                        st.markdown(f"<p style='color:red; font-weight:bold;'>{valor_formatado}</p>", unsafe_allow_html=True)
-                # Coluna 3: Data
+                    if row['Tipo'] == 'Receita': st.markdown(f"<p style='color:green; font-weight:bold;'>{valor_formatado}</p>", unsafe_allow_html=True)
+                    else: st.markdown(f"<p style='color:red; font-weight:bold;'>{valor_formatado}</p>", unsafe_allow_html=True)
                 with col3:
-                    st.write(f"_{row['Data/Hora'].strftime('%d/%m/%Y às %H:%M')}_")
-                # Coluna 4: Botão de Exclusão
+                    if pd.notna(row['Data/Hora']): st.write(f"_{row['Data/Hora'].strftime('%d/%m/%Y às %H:%M')}_")
                 with col4:
-                    # Usa o índice original do DataFrame como chave única
                     if st.button("🗑️", key=f"delete_{index}", help="Excluir este lançamento"):
-                        # Remove a linha do DataFrame principal em memória
                         st.session_state.transacoes.drop(index, inplace=True)
-                        # Salva o DataFrame atualizado no arquivo
                         salvar_dados_csv(st.session_state.transacoes, 'transacoes.csv')
-                        st.success(f"Lançamento '{row['Descrição']}' excluído!")
-                        # Força a atualização da página
-                        st.rerun()
+                        st.success(f"Lançamento '{row['Descrição']}' excluído!"); st.rerun()
 
 with tab_freelancer:
-    #... (código mantido)
     exibir_navegador_mes(contexto="freelancer")
     st.header("Gestor de Trabalhos Freelancer")
     df_freelas = st.session_state.freelas.copy()
@@ -215,7 +197,7 @@ with tab_freelancer:
             with st.container(border=True):
                 col1, col2 = st.columns([3, 1])
                 with col1:
-                    st.write(f"**{job['Descrição']}**"); 
+                    st.write(f"**{job['Descrição']}**")
                     if pd.notna(job['Início']): st.write(f"Iniciado em: {job['Início'].strftime('%d/%m/%Y às %H:%M')}")
                     if job['Modo de Cobrança'] == 'Valor por Hora': st.write(f"Cobrança: R$ {job['Valor da Hora']:.2f}/hora")
                     else: st.write(f"Cobrança: R$ {job['Valor Fixo']:.2f} (valor fixo)")
@@ -223,7 +205,7 @@ with tab_freelancer:
                     if st.button("🏁 Finalizar", key=f"finalizar_{idx}"):
                         termino = datetime.now(); valor_final = 0.0
                         if job['Modo de Cobrança'] == 'Valor por Hora':
-                            duracao = termino - pd.to_datetime(job['Início']); horas = duracao.total_seconds() / 3600
+                            duracao = termino - job['Início']; horas = duracao.total_seconds() / 3600
                             valor_final = horas * job['Valor da Hora']
                         else: valor_final = job['Valor Fixo']
                         st.session_state.freelas.at[idx, 'Status'] = 'Concluído'; st.session_state.freelas.at[idx, 'Término'] = termino
@@ -235,7 +217,6 @@ with tab_freelancer:
     st.data_editor(freelas_concluidos_filtrados, use_container_width=True, hide_index=True)
 
 with tab_reserva:
-    #... (código mantido)
     st.header("🛡️ Reserva de Emergência")
     movimentacoes = st.session_state.reserva_movimentacoes.copy()
     valor_atual = movimentacoes[movimentacoes['Tipo'] == 'Aporte']['Valor'].sum() - movimentacoes[movimentacoes['Tipo'] == 'Retirada']['Valor'].sum()
@@ -271,7 +252,6 @@ with tab_reserva:
     st.data_editor(st.session_state.reserva_movimentacoes.sort_values(by="Data", ascending=False), use_container_width=True, hide_index=True)
 
 with tab_ia:
-    #... (código mantido)
     exibir_navegador_mes(contexto="ia")
     st.header("Análise de Gastos do Mês")
     despesas_filtradas = transacoes_filtradas[transacoes_filtradas['Tipo'] == 'Despesa']

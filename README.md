@@ -1,2 +1,2 @@
 # controle-de-financias
-Um app para controlar minhas Financias pessoais 
+Um app para controle de financias e frelas 

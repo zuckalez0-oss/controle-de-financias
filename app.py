@@ -17,7 +17,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. FUNÇÕES DE DADOS (COM LÓGICA DE MIGRAÇÃO ROBUSTA) ---
+# --- 2. FUNÇÕES DE DADOS (COM LÓGICA DE MIGRAÇÃO E TIPAGEM ROBUSTA) ---
 
 def salvar_dados_csv(df, caminho_arquivo): df.to_csv(caminho_arquivo, index=False)
 def salvar_dados_json(dados, caminho_arquivo):
@@ -30,10 +30,13 @@ def carregar_transacoes():
         df = pd.read_csv(caminho_arquivo)
         if 'Data' in df.columns and 'Data/Hora' not in df.columns:
             df.rename(columns={'Data': 'Data/Hora'}, inplace=True)
+        colunas_alteradas = False
         for col in colunas_esperadas:
-            if col not in df.columns: df[col] = np.nan
+            if col not in df.columns:
+                df[col] = np.nan; colunas_alteradas = True
         df['Data/Hora'] = pd.to_datetime(df['Data/Hora'], errors='coerce')
         df['Valor'] = pd.to_numeric(df['Valor'], errors='coerce').fillna(0)
+        if colunas_alteradas: salvar_dados_csv(df, caminho_arquivo)
         return df
     except (FileNotFoundError, pd.errors.EmptyDataError):
         return pd.DataFrame(columns=colunas_esperadas)
@@ -140,9 +143,7 @@ with tab_lancamento:
 # --- Lógica de Filtragem ---
 periodo = st.session_state.periodo_selecionado
 df_transacoes = st.session_state.transacoes.copy()
-df_transacoes['Data/Hora'] = pd.to_datetime(df_transacoes['Data/Hora'], errors='coerce') # Guarda de Tipo
-transacoes_filtradas = df_transacoes.dropna(subset=['Data/Hora'])
-transacoes_filtradas = transacoes_filtradas[(transacoes_filtradas['Data/Hora'].dt.year == periodo.year) & (transacoes_filtradas['Data/Hora'].dt.month == periodo.month)]
+transacoes_filtradas = df_transacoes[(df_transacoes['Data/Hora'].dt.year == periodo.year) & (df_transacoes['Data/Hora'].dt.month == periodo.month)]
 
 with tab_historico:
     exibir_navegador_mes(contexto="historico")
@@ -177,10 +178,8 @@ with tab_freelancer:
     exibir_navegador_mes(contexto="freelancer")
     st.header("Gestor de Trabalhos Freelancer")
     df_freelas = st.session_state.freelas.copy()
-    df_freelas['Término'] = pd.to_datetime(df_freelas['Término'], errors='coerce') # Guarda de Tipo
-    df_freelas_concluidos = df_freelas.dropna(subset=['Término'])
-    freelas_concluidos_filtrados = df_freelas_concluidos[(df_freelas_concluidos['Status'] == 'Concluído') & (df_freelas_concluidos['Término'].dt.year == periodo.year) & (df_freelas_concluidos['Término'].dt.month == periodo.month)]
-    
+    freelas_concluidos_filtrados = df_freelas.dropna(subset=['Término'])
+    freelas_concluidos_filtrados = freelas_concluidos_filtrados[(freelas_concluidos_filtrados['Status'] == 'Concluído') & (freelas_concluidos_filtrados['Término'].dt.year == periodo.year) & (freelas_concluidos_filtrados['Término'].dt.month == periodo.month)]
     with st.expander("➕ Registrar Novo Trabalho"):
         with st.form("novo_freela_form", clear_on_submit=True):
             freela_descricao = st.text_input("Descrição do Trabalho", placeholder="Ex: Site para Padaria do Bairro")
@@ -196,7 +195,6 @@ with tab_freelancer:
     st.divider()
     st.subheader("Em Andamento")
     trabalhos_andamento = st.session_state.freelas[st.session_state.freelas['Status'] == 'Em Andamento'].copy()
-    trabalhos_andamento['Início'] = pd.to_datetime(trabalhos_andamento['Início'], errors='coerce')
     if trabalhos_andamento.empty: st.info("Nenhum trabalho em andamento.")
     else:
         for idx, job in trabalhos_andamento.iterrows():
@@ -226,8 +224,11 @@ with tab_reserva:
     movimentacoes = st.session_state.reserva_movimentacoes.copy()
     valor_atual = movimentacoes[movimentacoes['Tipo'] == 'Aporte']['Valor'].sum() - movimentacoes[movimentacoes['Tipo'] == 'Retirada']['Valor'].sum()
     meta_reserva = st.session_state.reserva_meta
-    percentual_completo = (valor_atual / meta_reserva) if meta_reserva > 0 else 0.0
-    st.progress(percentual_completo, text=f"{percentual_completo:.1%} Completo")
+    # AQUI ESTÁ A CORREÇÃO
+    percentual_calculado = (valor_atual / meta_reserva) if meta_reserva > 0 else 0.0
+    percentual_completo = min(1.0, percentual_calculado) # Garante que o valor não passe de 1.0
+
+    st.progress(percentual_completo, text=f"{percentual_calculado:.1%} Completo")
     col1, col2, col3 = st.columns(3)
     col1.metric("Meta", f"R$ {meta_reserva:,.2f}"); col2.metric("Valor Atual", f"R$ {valor_atual:,.2f}"); col3.metric("Faltam", f"R$ {max(0, meta_reserva - valor_atual):,.2f}")
     with st.expander("💸 Registrar Movimentação na Reserva"):

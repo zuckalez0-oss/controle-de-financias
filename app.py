@@ -7,7 +7,7 @@ import plotly.express as px
 import json
 import numpy as np
 
-# --- 1. CONFIGURAÇÃO DA PÁGINA E ESTILOS ---
+# style_config_page_controle_financas
 st.set_page_config(page_title="Finanças com IA", page_icon="🤖💰", layout="centered", initial_sidebar_state="collapsed")
 st.markdown("""
 <style>
@@ -17,7 +17,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. FUNÇÕES DE DADOS (COM LÓGICA DE MIGRAÇÃO E TIPAGEM ROBUSTA) ---
+# salvar_dados_csv_transacoes
 
 def salvar_dados_csv(df, caminho_arquivo): df.to_csv(caminho_arquivo, index=False)
 def salvar_dados_json(dados, caminho_arquivo):
@@ -71,7 +71,7 @@ def carregar_reserva_meta():
     try: return json.load(open('reserva_meta.json', 'r')).get('meta', 1000.0)
     except (FileNotFoundError, json.JSONDecodeError): return 1000.0
 
-# --- Funções da IA ---
+#function_ai
 def categorizar_com_ia(descricao):
     if not descricao: return "Outros", "N/A"
     try:
@@ -92,7 +92,7 @@ def chamar_chatbot_ia(historico_conversa, resumo_financeiro):
     except Exception as e: st.error(f"Erro no chatbot: {e}"); return "Desculpe, estou com um problema para me conectar. Tente novamente."
 
 
-# --- 3. INICIALIZAÇÃO E LÓGICA DE PERÍODO ---
+# period
 if 'periodo_selecionado' not in st.session_state: st.session_state.periodo_selecionado = datetime.now()
 if 'transacoes' not in st.session_state: st.session_state.transacoes = carregar_transacoes()
 if 'freelas' not in st.session_state: st.session_state.freelas = carregar_freelas()
@@ -110,7 +110,7 @@ def exibir_navegador_mes(contexto):
     if col3.button("➡️", use_container_width=True, help="Próximo Mês", key=f"next_{contexto}"):
         st.session_state.periodo_selecionado += relativedelta(months=1); st.rerun()
 
-# --- 4. INTERFACE PRINCIPAL ---
+# principal
 st.title("🤖 Finanças & Freelas com IA")
 tab_lancamento, tab_historico, tab_freelancer, tab_reserva, tab_ia = st.tabs(["✍️ Lançar", "📊 Histórico", "💻 Freelancer", "🛡️ Reserva", "🤖 Análise IA"])
 
@@ -140,7 +140,7 @@ with tab_lancamento:
                 salvar_dados_csv(st.session_state.transacoes, 'transacoes.csv')
                 st.success("Transação salva com sucesso!"); st.session_state.sugestoes = {"categoria": "", "subcategoria": ""}; st.rerun()
 
-# --- Lógica de Filtragem ---
+# filters
 periodo = st.session_state.periodo_selecionado
 df_transacoes = st.session_state.transacoes.copy()
 transacoes_filtradas = df_transacoes[(df_transacoes['Data/Hora'].dt.year == periodo.year) & (df_transacoes['Data/Hora'].dt.month == periodo.month)]

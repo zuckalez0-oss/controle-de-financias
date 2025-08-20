@@ -7,7 +7,7 @@ import plotly.express as px
 import json
 import numpy as np
 
-# style_config_page_controle_financas
+# --- 1. CONFIGURAÇÃO DA PÁGINA E ESTILOS ---
 st.set_page_config(page_title="Finanças com IA", page_icon="🤖💰", layout="centered", initial_sidebar_state="collapsed")
 st.markdown("""
 <style>
@@ -17,7 +17,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# salvar_dados_csv_transacoes
+# --- 2. FUNÇÕES DE DADOS (COM LÓGICA DE MIGRAÇÃO ROBUSTA) ---
 
 def salvar_dados_csv(df, caminho_arquivo): df.to_csv(caminho_arquivo, index=False)
 def salvar_dados_json(dados, caminho_arquivo):
@@ -71,7 +71,7 @@ def carregar_reserva_meta():
     try: return json.load(open('reserva_meta.json', 'r')).get('meta', 1000.0)
     except (FileNotFoundError, json.JSONDecodeError): return 1000.0
 
-#function_ai
+# --- Funções da IA ---
 def categorizar_com_ia(descricao):
     if not descricao: return "Outros", "N/A"
     try:
@@ -92,7 +92,7 @@ def chamar_chatbot_ia(historico_conversa, resumo_financeiro):
     except Exception as e: st.error(f"Erro no chatbot: {e}"); return "Desculpe, estou com um problema para me conectar. Tente novamente."
 
 
-# period
+# --- 3. INICIALIZAÇÃO E LÓGICA DE PERÍODO ---
 if 'periodo_selecionado' not in st.session_state: st.session_state.periodo_selecionado = datetime.now()
 if 'transacoes' not in st.session_state: st.session_state.transacoes = carregar_transacoes()
 if 'freelas' not in st.session_state: st.session_state.freelas = carregar_freelas()
@@ -110,7 +110,7 @@ def exibir_navegador_mes(contexto):
     if col3.button("➡️", use_container_width=True, help="Próximo Mês", key=f"next_{contexto}"):
         st.session_state.periodo_selecionado += relativedelta(months=1); st.rerun()
 
-# principal
+# --- 4. INTERFACE PRINCIPAL ---
 st.title("🤖 Finanças & Freelas com IA")
 tab_lancamento, tab_historico, tab_freelancer, tab_reserva, tab_ia = st.tabs(["✍️ Lançar", "📊 Histórico", "💻 Freelancer", "🛡️ Reserva", "🤖 Análise IA"])
 
@@ -140,10 +140,12 @@ with tab_lancamento:
                 salvar_dados_csv(st.session_state.transacoes, 'transacoes.csv')
                 st.success("Transação salva com sucesso!"); st.session_state.sugestoes = {"categoria": "", "subcategoria": ""}; st.rerun()
 
-# filters
+# --- Lógica de Filtragem ---
 periodo = st.session_state.periodo_selecionado
 df_transacoes = st.session_state.transacoes.copy()
-transacoes_filtradas = df_transacoes[(df_transacoes['Data/Hora'].dt.year == periodo.year) & (df_transacoes['Data/Hora'].dt.month == periodo.month)]
+df_transacoes['Data/Hora'] = pd.to_datetime(df_transacoes['Data/Hora'], errors='coerce') # Guarda de Tipo
+transacoes_filtradas = df_transacoes.dropna(subset=['Data/Hora'])
+transacoes_filtradas = transacoes_filtradas[(transacoes_filtradas['Data/Hora'].dt.year == periodo.year) & (transacoes_filtradas['Data/Hora'].dt.month == periodo.month)]
 
 with tab_historico:
     exibir_navegador_mes(contexto="historico")
@@ -178,8 +180,12 @@ with tab_freelancer:
     exibir_navegador_mes(contexto="freelancer")
     st.header("Gestor de Trabalhos Freelancer")
     df_freelas = st.session_state.freelas.copy()
-    freelas_concluidos_filtrados = df_freelas.dropna(subset=['Término'])
-    freelas_concluidos_filtrados = freelas_concluidos_filtrados[(freelas_concluidos_filtrados['Status'] == 'Concluído') & (freelas_concluidos_filtrados['Término'].dt.year == periodo.year) & (freelas_concluidos_filtrados['Término'].dt.month == periodo.month)]
+    
+    # AQUI ESTÁ A CORREÇÃO PRINCIPAL
+    df_freelas['Término'] = pd.to_datetime(df_freelas['Término'], errors='coerce')
+    df_freelas_concluidos_validos = df_freelas.dropna(subset=['Término'])
+    freelas_concluidos_filtrados = df_freelas_concluidos_validos[(df_freelas_concluidos_validos['Status'] == 'Concluído') & (df_freelas_concluidos_validos['Término'].dt.year == periodo.year) & (df_freelas_concluidos_validos['Término'].dt.month == periodo.month)]
+    
     with st.expander("➕ Registrar Novo Trabalho"):
         with st.form("novo_freela_form", clear_on_submit=True):
             freela_descricao = st.text_input("Descrição do Trabalho", placeholder="Ex: Site para Padaria do Bairro")
@@ -195,6 +201,7 @@ with tab_freelancer:
     st.divider()
     st.subheader("Em Andamento")
     trabalhos_andamento = st.session_state.freelas[st.session_state.freelas['Status'] == 'Em Andamento'].copy()
+    trabalhos_andamento['Início'] = pd.to_datetime(trabalhos_andamento['Início'], errors='coerce')
     if trabalhos_andamento.empty: st.info("Nenhum trabalho em andamento.")
     else:
         for idx, job in trabalhos_andamento.iterrows():
@@ -224,10 +231,8 @@ with tab_reserva:
     movimentacoes = st.session_state.reserva_movimentacoes.copy()
     valor_atual = movimentacoes[movimentacoes['Tipo'] == 'Aporte']['Valor'].sum() - movimentacoes[movimentacoes['Tipo'] == 'Retirada']['Valor'].sum()
     meta_reserva = st.session_state.reserva_meta
-    # AQUI ESTÁ A CORREÇÃO
     percentual_calculado = (valor_atual / meta_reserva) if meta_reserva > 0 else 0.0
-    percentual_completo = min(1.0, percentual_calculado) # Garante que o valor não passe de 1.0
-
+    percentual_completo = min(1.0, percentual_calculado)
     st.progress(percentual_completo, text=f"{percentual_calculado:.1%} Completo")
     col1, col2, col3 = st.columns(3)
     col1.metric("Meta", f"R$ {meta_reserva:,.2f}"); col2.metric("Valor Atual", f"R$ {valor_atual:,.2f}"); col3.metric("Faltam", f"R$ {max(0, meta_reserva - valor_atual):,.2f}")
